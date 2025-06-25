@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎧 Audio Annotation Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/wavesurfer.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .animate-pulse-fast {
+             animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            50% {
+                opacity: .5;
+            }
+        }
+        /* Style for the contenteditable div */
+        #annotation-input[contenteditable="true"], .editable-note {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            outline: none;
+        }
+        /* Style for inline select */
+        .editable-emoji {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: transparent;
+            border: 1px solid transparent;
+            padding: 0.25rem;
+            width: 100%;
+            cursor: pointer;
+        }
+        .editable-emoji:hover {
+            border-color: #d1d5db; /* gray-300 */
+        }
+        .editable-emoji:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            --tw-ring-color: #6366f1; /* indigo-500 */
+            box-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">🎧 Audio Annotation Tool</h1>
+            <p class="mt-2 text-lg text-gray-600">A lightweight, in-browser tool for annotating audio like a boss.</p>
+        </header>
+
+        <main class="bg-white rounded-xl shadow-2xl p-6 md:p-8">
+            <!-- Drop Zone -->
+            <div id="drop-zone" class="border-4 border-dashed border-gray-300 rounded-lg p-10 text-center cursor-pointer hover:border-indigo-500 transition-colors duration-300">
+                <p id="drop-zone-text" class="text-gray-500">Drag & Drop an audio file here, or click to select</p>
+                <input type="file" id="file-input" class="hidden" accept="audio/*">
+            </div>
+
+            <!-- Audio Player & Controls -->
+            <div id="player-controls" class="hidden mt-6">
+                <div id="waveform" class="w-full h-32 bg-gray-200 rounded-md relative"></div>
+                <div id="player-ui" class="flex flex-wrap items-center justify-between gap-4 mt-4 bg-gray-50 p-4 rounded-lg shadow-inner">
+                    <button id="play-pause-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition w-28">Play</button>
+                    <div class="flex items-center gap-2 text-sm font-mono">
+                        <span id="current-time">00:00:00</span>
+                        <span>/</span>
+                        <span id="total-time">00:00:00</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label for="zoom-slider" class="text-sm">Zoom:</label>
+                        <input id="zoom-slider" type="range" min="1" max="1000" value="1" class="w-32 md:w-48">
+                    </div>
+                </div>
+                 <div id="current-file" class="mt-2 text-center text-sm text-gray-500"></div>
+            </div>
+
+            <!-- Annotation Section -->
+            <div id="annotation-section" class="hidden mt-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold">Annotations</h2>
+                    <div class="flex items-center gap-2">
+                        <button id="import-csv-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition text-sm flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                            </svg>
+                            Import CSV
+                        </button>
+                        <input type="file" id="import-csv-input" class="hidden" accept=".csv,text/csv">
+                        <button id="download-csv-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition text-sm flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                            Download CSV
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Annotation Input Form -->
+                <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg shadow-inner">
+                    <select id="emoji-input" class="p-2 border border-gray-300 rounded-md bg-white text-xl focus:ring-2 focus:ring-indigo-500">
+                        <option value="📝">📝</option>
+                        <option value="🎵">🎵</option>
+                        <option value="❗">❗</option>
+                        <option value="💡">💡</option>
+                        <option value="🎤">🎤</option>
+                    </select>
+                   <div id="annotation-input" contenteditable="true" data-placeholder="Press Enter to add note at current time..." class="flex-grow p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition min-h-[42px] max-h-48 overflow-y-auto bg-white"></div>
+                </div>
+                
+                <!-- Annotations Table -->
+                <div class="mt-4 overflow-x-auto">
+                    <table class="min-w-full bg-white border border-gray-200 rounded-md">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Time</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Type</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="annotations-table" class="divide-y divide-gray-200">
+                             <tr id="no-annotations-row">
+                                 <td colspan="4" class="p-4 text-center text-gray-400">No annotations yet. Start typing above!</td>
+                             </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+             <!-- Info box for when no audio is loaded -->
+            <div id="info-box" class="mt-8 p-6 bg-indigo-50 border-l-4 border-indigo-400 rounded-r-lg">
+                <div class="flex">
+                    <div class="py-1">
+                        <svg class="h-6 w-6 text-indigo-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-indigo-800">Getting Started</h3>
+                        <p class="text-sm text-indigo-700 mt-1">Upload an audio file to begin. You can then add timestamped notes with custom emojis to categorize your annotations.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const dropZoneText = document.getElementById('drop-zone-text');
+        const fileInput = document.getElementById('file-input');
+        const playerControls = document.getElementById('player-controls');
+        const waveformContainer = document.getElementById('waveform');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const annotationSection = document.getElementById('annotation-section');
+        const annotationInput = document.getElementById('annotation-input');
+        const emojiInput = document.getElementById('emoji-input');
+        const annotationsTable = document.getElementById('annotations-table');
+        const noAnnotationsRow = document.getElementById('no-annotations-row');
+        const infoBox = document.getElementById('info-box');
+        const currentFileEl = document.getElementById('current-file');
+        const downloadCsvBtn = document.getElementById('download-csv-btn');
+        const importCsvBtn = document.getElementById('import-csv-btn');
+        const importCsvInput = document.getElementById('import-csv-input');
+
+        let wavesurfer;
+        let annotations = [];
+        let isReady = false;
+        let currentFileName = 'annotations';
+
+        // --- Utility Functions ---
+        const formatTime = (seconds) => {
+            if (isNaN(seconds)) return '00:00:00';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return [h, m, s].map(unit => String(unit).padStart(2, '0')).join(':');
+        };
+
+        // --- WaveSurfer Initialization ---
+        const initWaveSurfer = () => {
+            try {
+                if (wavesurfer) {
+                    wavesurfer.destroy();
+                }
+                wavesurfer = WaveSurfer.create({
+                    container: waveformContainer,
+                    waveColor: '#a8b5c1',
+                    progressColor: '#6366f1',
+                    barWidth: 2,
+                    barGap: 1,
+                    normalize: true,
+                    height: 128,
+                    responsive: true,
+                });
+                bindWaveSurferEvents();
+            } catch (error) {
+                console.error("Error initializing WaveSurfer:", error);
+                dropZoneText.textContent = '❌ Could not initialize audio player.';
+                dropZone.classList.add('border-red-500');
+            }
+        };
+        
+        // --- Annotation Logic ---
+        const renderAnnotations = () => {
+            annotationsTable.innerHTML = '';
+            
+            if (annotations.length === 0) {
+                annotationsTable.appendChild(noAnnotationsRow);
+                downloadCsvBtn.disabled = true;
+                downloadCsvBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                return;
+            }
+
+            downloadCsvBtn.disabled = false;
+            downloadCsvBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            annotations.sort((a, b) => a.rawTime - b.rawTime);
+
+            annotations.forEach((ann) => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                row.dataset.id = ann.id;
+
+                const timeCell = document.createElement('td');
+                timeCell.className = 'px-4 py-2 font-mono text-sm text-indigo-600 cursor-pointer hover:underline';
+                timeCell.textContent = ann.time;
+                timeCell.onclick = () => wavesurfer.seekTo(ann.rawTime / wavesurfer.getDuration());
+
+                const emojiCell = document.createElement('td');
+                emojiCell.className = 'px-4 py-2 text-xl';
+                const emojiSelect = document.createElement('select');
+                emojiSelect.className = 'editable-emoji rounded-md';
+                emojiInput.querySelectorAll('option').forEach(opt => {
+                    emojiSelect.add(opt.cloneNode(true));
+                });
+                emojiSelect.value = ann.emoji;
+                emojiSelect.onchange = (e) => updateAnnotation(ann.id, { emoji: e.target.value });
+                emojiCell.appendChild(emojiSelect);
+
+                const noteCell = document.createElement('td');
+                noteCell.className = 'px-4 py-2';
+                const noteDiv = document.createElement('div');
+                noteDiv.contentEditable = true;
+                noteDiv.innerHTML = ann.note;
+                noteDiv.className = 'editable-note w-full bg-transparent focus:ring-1 focus:ring-indigo-500 focus:bg-white rounded p-1';
+                noteDiv.onblur = (e) => updateAnnotation(ann.id, { note: e.target.innerHTML });
+                
+                noteDiv.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault(); // Prevent adding a new line
+                        e.target.blur();    // Trigger the onblur event to save
+                    }
+                });
+
+                noteCell.appendChild(noteDiv);
+                
+                const deleteCell = document.createElement('td');
+                deleteCell.className = 'px-4 py-2 text-center';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.className = 'text-gray-400 hover:text-red-500 transition-colors';
+                deleteBtn.onclick = () => deleteAnnotation(ann.id);
+                deleteCell.appendChild(deleteBtn);
+
+                row.append(timeCell, emojiCell, noteCell, deleteCell);
+                annotationsTable.appendChild(row);
+            });
+        };
+
+        const addAnnotation = () => {
+            const noteHtml = annotationInput.innerHTML.trim();
+            if (!isReady || !noteHtml) return;
+
+            const rawTime = wavesurfer.getCurrentTime();
+            const newAnnotation = {
+                id: Date.now(),
+                rawTime: rawTime,
+                time: formatTime(rawTime),
+                note: noteHtml,
+                emoji: emojiInput.value,
+            };
+
+            annotations.push(newAnnotation);
+            annotationInput.innerHTML = '';
+            renderAnnotations();
+        };
+
+        const updateAnnotation = (id, updates) => {
+            const index = annotations.findIndex(ann => ann.id === id);
+            if (index !== -1) {
+                annotations[index] = { ...annotations[index], ...updates };
+            }
+        };
+
+        const deleteAnnotation = (id) => {
+            annotations = annotations.filter(ann => ann.id !== id);
+            renderAnnotations();
+        };
+
+        // --- File Handling and Downloads ---
+        const handleAudioFile = (file) => {
+            if (!file || !file.type.startsWith('audio/')) {
+                dropZoneText.textContent = '⚠️ Please select a valid audio file';
+                dropZone.classList.add('border-red-500');
+                return;
+            }
+
+            try {
+                currentFileName = file.name.split('.').slice(0, -1).join('.') || 'annotations';
+                dropZoneText.textContent = `Loading file: ${file.name}`;
+                currentFileEl.textContent = `Current File: ${file.name}`;
+                dropZoneText.classList.remove('animate-pulse-fast');
+                initWaveSurfer();
+                wavesurfer.load(URL.createObjectURL(file));
+                annotations = [];
+                renderAnnotations();
+            } catch (error) {
+                console.error("Error loading audio file:", error);
+                dropZoneText.textContent = '❌ Error loading file. It may be corrupted.';
+                dropZone.classList.add('border-red-500');
+            }
+        };
+        
+        const handleCsvImport = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!isReady) {
+                alert("Please load an audio file before importing annotations.");
+                event.target.value = ''; // Reset file input
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                if (!text || text.trim() === '') {
+                    alert('The selected CSV file is empty.');
+                    return;
+                }
+                
+                try {
+                    const newAnnotations = [];
+                    const rows = text.split('\n');
+                    const header = rows[0].trim();
+                    
+                    // Basic header validation
+                    if (!header.includes("Time (s)") || !header.includes("Note")) {
+                        throw new Error("Invalid CSV format. Header is missing required columns.");
+                    }
+
+                    // Start from the second line (index 1)
+                    for(let i = 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (row.trim() === '') continue;
+
+                        const columns = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g).map(col => col.replace(/"/g, ''));
+                        
+                        if (columns.length < 4) {
+                            console.warn(`Skipping malformed row ${i + 1}: ${row}`);
+                            continue;
+                        }
+
+                        newAnnotations.push({
+                            id: Date.now() + i,
+                            rawTime: parseFloat(columns[0]),
+                            time: columns[1],
+                            emoji: columns[2],
+                            note: columns[3],
+                        });
+                    }
+                    
+                    if (newAnnotations.length === 0) {
+                        alert("No valid annotations found in the CSV file.");
+                        return;
+                    }
+
+                    annotations = newAnnotations;
+                    renderAnnotations();
+
+                } catch (parseError) {
+                    console.error("Error parsing CSV file:", parseError);
+                    alert(`Could not parse the CSV file. Please ensure it is correctly formatted. Error: ${parseError.message}`);
+                }
+            };
+            reader.readAsText(file);
+            
+            event.target.value = '';
+        };
+
+        const downloadCSV = () => {
+            if (annotations.length === 0) return;
+            
+            const headers = ["Time (s)", "Formatted Time", "Type", "Note"];
+            const rows = annotations.map(ann => {
+                const timeInS = ann.rawTime.toFixed(3);
+                const formattedTime = ann.time;
+                const emoji = ann.emoji;
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = ann.note;
+                const noteText = (tempDiv.textContent || tempDiv.innerText || "").replace(/"/g, '""');
+                return [`"${timeInS}"`, `"${formattedTime}"`, `"${emoji}"`, `"${noteText}"`].join(',');
+            });
+
+            let csvContent = '\uFEFF'; 
+            csvContent += headers.join(',') + '\r\n';
+            csvContent += rows.join('\r\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${currentFileName}_annotations.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+        
+        // --- Event Binding ---
+        const bindWaveSurferEvents = () => {
+            wavesurfer.on('ready', () => {
+                isReady = true;
+                totalTimeEl.textContent = formatTime(wavesurfer.getDuration());
+                playPauseBtn.disabled = false;
+                playPauseBtn.textContent = 'Play';
+                dropZone.classList.add('border-green-500');
+                dropZoneText.textContent = '✅ Success! File loaded.';
+                playerControls.classList.remove('hidden');
+                annotationSection.classList.remove('hidden');
+                infoBox.classList.add('hidden');
+                zoomSlider.value = zoomSlider.min;
+                wavesurfer.zoom(Number(zoomSlider.value));
+            });
+            wavesurfer.on('audioprocess', () => currentTimeEl.textContent = formatTime(wavesurfer.getCurrentTime()));
+            wavesurfer.on('seeking', () => currentTimeEl.textContent = formatTime(wavesurfer.getCurrentTime()));
+            wavesurfer.on('play', () => playPauseBtn.textContent = 'Play');
+            wavesurfer.on('pause', () => playPauseBtn.textContent = 'Play');
+            wavesurfer.on('loading', (percent) => {
+                dropZoneText.textContent = `🌀 Loading waveform... ${percent}%`;
+                dropZoneText.classList.add('animate-pulse-fast');
+            });
+            wavesurfer.on('error', (e) => {
+                console.error('WaveSurfer error:', e);
+                dropZoneText.textContent = `❌ Error decoding audio: ${e.message || e}`;
+                dropZone.classList.add('border-red-500');
+            });
+        };
+
+        const bindEventListeners = () => {
+            // Renamed handleFile to handleAudioFile for clarity
+            dropZone.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => e.target.files.length && handleAudioFile(e.target.files[0]));
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
+            });
+
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-indigo-500', 'bg-indigo-50'));
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+                if (e.dataTransfer.files.length) handleAudioFile(e.dataTransfer.files[0]);
+            });
+
+            playPauseBtn.addEventListener('click', () => isReady && wavesurfer.playPause());
+            zoomSlider.addEventListener('input', (e) => isReady && wavesurfer.zoom(Number(e.target.value)));
+            annotationInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    addAnnotation();
+                }
+            });
+
+            downloadCsvBtn.addEventListener('click', downloadCSV);
+            importCsvBtn.addEventListener('click', () => importCsvInput.click());
+            importCsvInput.addEventListener('change', handleCsvImport);
+
+            document.addEventListener('keydown', (e) => {
+                const activeEl = document.activeElement;
+                if (e.code === 'Space' && activeEl && !activeEl.isContentEditable && activeEl.tagName !== 'SELECT') {
+                    e.preventDefault();
+                    if (isReady) {
+                        wavesurfer.playPause();
+                    }
+                }
+            });
+        };
+        
+        // --- Initial Setup ---
+        renderAnnotations();
+        bindEventListeners();
+    </script>
+</body>
+</html>
